@@ -1,0 +1,1521 @@
+{
+  "name": "04 — Capture Replies (Always On)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "credentials": {
+        "telegramApi": {
+          "id": "lGqs8zRPmzYezr5z",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract key fields from Telegram message update\nconst update = $input.first().json;\nconst msg = update.message || {};\nconst chat_id = String((msg.chat || {}).id || '');\nconst text = (msg.text || '').trim();\n\nif (!chat_id || !text) {\n  return [];\n}\n\n// Calculate today's date in IST\nconst istOffset = 5.5 * 60 * 60 * 1000;\nconst now = new Date();\nconst istNow = new Date(now.getTime() + istOffset);\nconst dd = String(istNow.getUTCDate()).padStart(2, '0');\nconst mm = String(istNow.getUTCMonth() + 1).padStart(2, '0');\nconst yyyy = istNow.getUTCFullYear();\nconst todayIST = `${dd}/${mm}/${yyyy}`;\n\nconst hh = String(istNow.getUTCHours()).padStart(2, '0');\nconst min = String(istNow.getUTCMinutes()).padStart(2, '0');\nconst timestampIST = `${dd}/${mm}/${yyyy} ${hh}:${min}`;\n\nreturn [{\n  json: { chat_id, text, today_date: todayIST, timestamp_ist: timestampIST }\n}];"
+      },
+      "id": "extract-message",
+      "name": "Extract Message Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Student Registry",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "telegram_chat_id",
+              "lookupValue": "={{ $json.chat_id }}"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "id": "lookup-registry",
+      "name": "Lookup Student Registry",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge message data + registry/session data; recalculate day number\nconst msgData = $('Extract Message Data').first().json;\nconst regRows = $input.all();\n\nif (!regRows || regRows.length === 0 || !regRows[0].json || !regRows[0].json['telegram_chat_id']) {\n  // Unknown student — ignore\n  return [];\n}\n\nconst reg = regRows[0].json;\nconst expectedNext = (reg['Expected Next'] || 'none').trim();\nconst sessionDate = reg['Session Date'] || msgData.today_date;\nconst studentName = reg['student_name'] || 'Student';\n\n// Recalculate day number from start_date\nconst startDateStr = reg['start_date'] || '';\nlet dayNumber = '?';\nif (startDateStr) {\n  const parts = startDateStr.split('/');\n  let startDate;\n  if (parts.length === 3) {\n    startDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));\n  } else {\n    startDate = new Date(startDateStr);\n  }\n  if (!isNaN(startDate.getTime())) {\n    const diffMs = new Date() - startDate;\n    dayNumber = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;\n  }\n}\n\nreturn [{\n  json: {\n    chat_id: msgData.chat_id,\n    text: msgData.text,\n    today_date: msgData.today_date,\n    timestamp_ist: msgData.timestamp_ist,\n    expected_next: expectedNext,\n    session_date: sessionDate,\n    student_name: studentName,\n    day_number: dayNumber,\n    telegram_chat_id: reg['telegram_chat_id']\n  }\n}];"
+      },
+      "id": "merge-session",
+      "name": "Merge Session Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "is-waiting-slots",
+              "leftValue": "={{ $json.expected_next }}",
+              "rightValue": "waiting_slots",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-waiting-slots",
+      "name": "Is waiting_slots?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "is-waiting-hours",
+              "leftValue": "={{ $json.expected_next }}",
+              "rightValue": "waiting_hours_target",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-waiting-hours",
+      "name": "Is waiting_hours_target?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "is-waiting-status",
+              "leftValue": "={{ $json.expected_next }}",
+              "rightValue": "waiting_status",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-waiting-status",
+      "name": "Is waiting_status?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "is-waiting-actual-hours",
+              "leftValue": "={{ $json.expected_next }}",
+              "rightValue": "waiting_actual_hours",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-waiting-actual-hours",
+      "name": "Is waiting_actual_hours?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "is-waiting-productivity",
+              "leftValue": "={{ $json.expected_next }}",
+              "rightValue": "waiting_productivity",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-waiting-productivity",
+      "name": "Is waiting_productivity?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        640
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "no-session-ignore",
+      "name": "No Session — Ignore",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        880,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse slots from reply keyboard tap\nconst d = $input.first().json;\nconst text = d.text;\n\nconst validSlots = { '2 Slots': 2, '3 Slots': 3, '4 Slots': 4, '5 Slots': 5, '6 Slots': 6 };\nconst slotsValue = validSlots[text];\n\nif (!slotsValue) {\n  return [{ json: { ...d, valid: false, error_msg: 'Please tap one of the options: 2 Slots, 3 Slots, 4 Slots, 5 Slots, or 6 Slots.' } }];\n}\n\nreturn [{\n  json: {\n    ...d,\n    valid: true,\n    slots_target: slotsValue,\n    q2_text: `Got it! *${slotsValue} slots* targeted today. 💪\\n\\nNow, how many study hours are you aiming for?`,\n    q2_reply_markup: {\n      keyboard: [\n        [{ text: '4 Hours' }, { text: '6 Hours' }],\n        [{ text: '8 Hours' }, { text: '10+ Hours' }]\n      ],\n      one_time_keyboard: true,\n      resize_keyboard: true\n    }\n  }\n}];"
+      },
+      "id": "process-slots",
+      "name": "Process Slots Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "slots-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "slots-valid-check",
+      "name": "Slots Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Daily Responses",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.session_date }}",
+            "Day Number": "={{ $json.day_number }}",
+            "Student Name": "={{ $json.student_name }}",
+            "Telegram Chat ID": "={{ $json.chat_id }}",
+            "Slots Target": "={{ $json.slots_target }}",
+            "Morning Timestamp": "={{ $json.timestamp_ist }}"
+          },
+          "matchingColumns": [
+            "Date",
+            "Telegram Chat ID"
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-slots",
+      "name": "Save Slots to Daily Responses",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1580,
+        -160
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Student Registry",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "telegram_chat_id": "={{ $('Process Slots Response').first().json.telegram_chat_id }}",
+            "Expected Next": "waiting_hours_target"
+          },
+          "matchingColumns": [
+            "telegram_chat_id"
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-session-hours",
+      "name": "Set Session — waiting_hours_target",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1800,
+        -160
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $('Process Slots Response').first().json.chat_id, text: $('Process Slots Response').first().json.q2_text, parse_mode: 'Markdown', reply_markup: $('Process Slots Response').first().json.q2_reply_markup}) }}",
+        "options": {}
+      },
+      "id": "send-q2-hours",
+      "name": "Send Q2 — Hours Keyboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2020,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.error_msg, reply_markup: {remove_keyboard: true}}) }}",
+        "options": {}
+      },
+      "id": "send-slots-error",
+      "name": "Send Slots Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse hours target from reply keyboard tap\nconst d = $input.first().json;\nconst text = d.text;\n\nconst hoursMap = { '4 Hours': '4', '6 Hours': '6', '8 Hours': '8', '10+ Hours': '10+' };\nconst hoursValue = hoursMap[text];\n\nif (!hoursValue) {\n  return [{ json: { ...d, valid: false, error_msg: 'Please tap one of the options: 4 Hours, 6 Hours, 8 Hours, or 10+ Hours.' } }];\n}\n\nreturn [{\n  json: {\n    ...d,\n    valid: true,\n    hours_target: hoursValue,\n    confirm_text: `✅ Targets set for today!\\n\\n📊 *${d.slots_target || '?'} slots* | *${hoursValue} hours*\\n\\nYour morning is locked in. Go make it count! 🚀`\n  }\n}];"
+      },
+      "id": "process-hours-target",
+      "name": "Process Hours Target Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "hours-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "hours-valid-check",
+      "name": "Hours Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Daily Responses",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.session_date }}",
+            "Telegram Chat ID": "={{ $json.chat_id }}",
+            "Hours Target": "={{ $json.hours_target }}"
+          },
+          "matchingColumns": [
+            "Date",
+            "Telegram Chat ID"
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-hours-target",
+      "name": "Save Hours Target",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1580,
+        80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Student Registry",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "telegram_chat_id": "={{ $('Process Hours Target Response').first().json.telegram_chat_id }}",
+            "Expected Next": "done"
+          },
+          "matchingColumns": [
+            "telegram_chat_id"
+          ]
+        },
+        "options": {}
+      },
+      "id": "clear-session-morning",
+      "name": "Clear Session After Morning",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1800,
+        80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $('Process Hours Target Response').first().json.chat_id, text: $('Process Hours Target Response').first().json.confirm_text, parse_mode: 'Markdown', reply_markup: {remove_keyboard: true}}) }}",
+        "options": {}
+      },
+      "id": "send-morning-confirm",
+      "name": "Send Morning Confirmation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2020,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.error_msg, reply_markup: {remove_keyboard: true}}) }}",
+        "options": {}
+      },
+      "id": "send-hours-error",
+      "name": "Send Hours Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse completion status from reply keyboard tap\nconst d = $input.first().json;\nconst text = d.text;\n\nconst statusMap = {\n  '✅ Done': 'Done',\n  '⚠️ Partially': 'Partially',\n  '❌ Not Done': 'Not Done'\n};\nconst statusValue = statusMap[text];\n\nif (!statusValue) {\n  return [{ json: { ...d, valid: false, error_msg: 'Please tap one of the options: ✅ Done, ⚠️ Partially, or ❌ Not Done.' } }];\n}\n\nreturn [{\n  json: {\n    ...d,\n    valid: true,\n    completion_status: statusValue,\n    ask_hours_text: 'How many hours did you actually study today?\\n\\nJust type a number (e.g. 4 or 4.5)'\n  }\n}];"
+      },
+      "id": "process-status",
+      "name": "Process Status Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "status-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "status-valid-check",
+      "name": "Status Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Daily Responses",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.session_date }}",
+            "Telegram Chat ID": "={{ $json.chat_id }}",
+            "Completion Status": "={{ $json.completion_status }}"
+          },
+          "matchingColumns": [
+            "Date",
+            "Telegram Chat ID"
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-status",
+      "name": "Save Completion Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1580,
+        240
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Student Registry",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "telegram_chat_id": "={{ $('Process Status Response').first().json.telegram_chat_id }}",
+            "Expected Next": "waiting_actual_hours"
+          },
+          "matchingColumns": [
+            "telegram_chat_id"
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-session-actual-hours",
+      "name": "Set Session — waiting_actual_hours",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1800,
+        240
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $('Process Status Response').first().json.chat_id, text: $('Process Status Response').first().json.ask_hours_text, reply_markup: {remove_keyboard: true}}) }}",
+        "options": {}
+      },
+      "id": "ask-actual-hours",
+      "name": "Ask Actual Hours",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2020,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.error_msg, reply_markup: {remove_keyboard: true}}) }}",
+        "options": {}
+      },
+      "id": "send-status-error",
+      "name": "Send Status Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate typed actual hours (number 0–24)\nconst d = $input.first().json;\nconst text = d.text;\nconst num = parseFloat(text);\nconst isValid = !isNaN(num) && num >= 0 && num <= 24;\n\nreturn [{\n  json: {\n    ...d,\n    valid: isValid,\n    actual_hours: isValid ? num : null,\n    error_msg: isValid ? null : 'Please type a number between 0 and 24 (e.g. 4 or 4.5).'\n  }\n}];"
+      },
+      "id": "validate-actual-hours",
+      "name": "Validate Actual Hours Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "actual-hours-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "actual-hours-valid-check",
+      "name": "Actual Hours Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Daily Responses",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.session_date }}",
+            "Telegram Chat ID": "={{ $json.chat_id }}",
+            "Actual Hours": "={{ $json.actual_hours }}"
+          },
+          "matchingColumns": [
+            "Date",
+            "Telegram Chat ID"
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-actual-hours",
+      "name": "Save Actual Hours",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1580,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Student Registry",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "telegram_chat_id": "={{ $('Validate Actual Hours Input').first().json.telegram_chat_id }}",
+            "Expected Next": "waiting_productivity"
+          },
+          "matchingColumns": [
+            "telegram_chat_id"
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-session-productivity",
+      "name": "Set Session — waiting_productivity",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1800,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Q3 productivity keyboard\nconst d = $('Validate Actual Hours Input').first().json;\n\nreturn [{\n  json: {\n    chat_id: d.chat_id,\n    text: 'Last question! How productive was today on a scale of 1 to 5?',\n    reply_markup: {\n      keyboard: [\n        [{ text: '⭐ 1' }, { text: '⭐⭐ 2' }, { text: '⭐⭐⭐ 3' }],\n        [{ text: '⭐⭐⭐⭐ 4' }, { text: '⭐⭐⭐⭐⭐ 5' }]\n      ],\n      one_time_keyboard: true,\n      resize_keyboard: true\n    }\n  }\n}];"
+      },
+      "id": "build-q3-productivity",
+      "name": "Build Q3 — Productivity Keyboard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2020,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.text, reply_markup: $json.reply_markup}) }}",
+        "options": {}
+      },
+      "id": "send-q3-productivity",
+      "name": "Send Q3 — Productivity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.error_msg, reply_markup: {remove_keyboard: true}}) }}",
+        "options": {}
+      },
+      "id": "send-actual-hours-error",
+      "name": "Send Actual Hours Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse productivity score from tap like '⭐ 1', '⭐⭐ 2', etc.\nconst d = $input.first().json;\nconst text = d.text;\n\nconst match = text.match(/(\\d+)$/);\nconst score = match ? parseInt(match[1]) : null;\n\nif (!score || score < 1 || score > 5) {\n  return [{ json: { ...d, valid: false, error_msg: 'Please tap one of the star options (⭐ 1 through ⭐⭐⭐⭐⭐ 5).' } }];\n}\n\nconst stars = '⭐'.repeat(score);\nlet closing = '';\nif (score >= 5) closing = 'Absolutely on fire today! 🔥 Keep this energy!';\nelse if (score >= 4) closing = 'Great day! Consistency like this will pay off. 💪';\nelse if (score >= 3) closing = 'Solid effort. Push a little harder tomorrow. 💫';\nelse if (score >= 2) closing = 'Every day is a lesson. Rest and come back stronger. 🌱';\nelse closing = 'Tough day \\u2014 that is okay. Tomorrow is a fresh start. 🙏';\n\nreturn [{\n  json: {\n    ...d,\n    valid: true,\n    productivity: score,\n    closing_text: `🌙 Night report saved!\\n\\nProductivity: ${stars} (${score}/5)\\n\\n${closing}\\n\\nSee you tomorrow! 🚀`\n  }\n}];"
+      },
+      "id": "process-productivity",
+      "name": "Process Productivity Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "productivity-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "productivity-valid-check",
+      "name": "Productivity Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Daily Responses",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.session_date }}",
+            "Telegram Chat ID": "={{ $json.chat_id }}",
+            "Productivity": "={{ $json.productivity }}",
+            "Night Timestamp": "={{ $json.timestamp_ist }}"
+          },
+          "matchingColumns": [
+            "Date",
+            "Telegram Chat ID"
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-productivity",
+      "name": "Save Productivity + Night Timestamp",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1580,
+        560
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Student Registry",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "telegram_chat_id": "={{ $('Process Productivity Response').first().json.telegram_chat_id }}",
+            "Expected Next": "done"
+          },
+          "matchingColumns": [
+            "telegram_chat_id"
+          ]
+        },
+        "options": {}
+      },
+      "id": "clear-session-night",
+      "name": "Clear Session After Night",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1800,
+        560
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $('Process Productivity Response').first().json.chat_id, text: $('Process Productivity Response').first().json.closing_text, parse_mode: 'Markdown', reply_markup: {remove_keyboard: true}}) }}",
+        "options": {}
+      },
+      "id": "send-closing",
+      "name": "Send Closing Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2020,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.error_msg, reply_markup: {remove_keyboard: true}}) }}",
+        "options": {}
+      },
+      "id": "send-productivity-error",
+      "name": "Send Productivity Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        720
+      ]
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Message Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message Data": {
+      "main": [
+        [
+          {
+            "node": "Lookup Student Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Student Registry": {
+      "main": [
+        [
+          {
+            "node": "Merge Session Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Session Data": {
+      "main": [
+        [
+          {
+            "node": "Is waiting_slots?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is waiting_slots?": {
+      "main": [
+        [
+          {
+            "node": "Process Slots Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is waiting_hours_target?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is waiting_hours_target?": {
+      "main": [
+        [
+          {
+            "node": "Process Hours Target Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is waiting_status?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is waiting_status?": {
+      "main": [
+        [
+          {
+            "node": "Process Status Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is waiting_actual_hours?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is waiting_actual_hours?": {
+      "main": [
+        [
+          {
+            "node": "Validate Actual Hours Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is waiting_productivity?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is waiting_productivity?": {
+      "main": [
+        [
+          {
+            "node": "Process Productivity Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Session — Ignore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Slots Response": {
+      "main": [
+        [
+          {
+            "node": "Slots Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slots Valid?": {
+      "main": [
+        [
+          {
+            "node": "Save Slots to Daily Responses",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Slots Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Slots to Daily Responses": {
+      "main": [
+        [
+          {
+            "node": "Set Session — waiting_hours_target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Session — waiting_hours_target": {
+      "main": [
+        [
+          {
+            "node": "Send Q2 — Hours Keyboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Hours Target Response": {
+      "main": [
+        [
+          {
+            "node": "Hours Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hours Valid?": {
+      "main": [
+        [
+          {
+            "node": "Save Hours Target",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Hours Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Hours Target": {
+      "main": [
+        [
+          {
+            "node": "Clear Session After Morning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Session After Morning": {
+      "main": [
+        [
+          {
+            "node": "Send Morning Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Status Response": {
+      "main": [
+        [
+          {
+            "node": "Status Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Valid?": {
+      "main": [
+        [
+          {
+            "node": "Save Completion Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Status Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Completion Status": {
+      "main": [
+        [
+          {
+            "node": "Set Session — waiting_actual_hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Session — waiting_actual_hours": {
+      "main": [
+        [
+          {
+            "node": "Ask Actual Hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Actual Hours Input": {
+      "main": [
+        [
+          {
+            "node": "Actual Hours Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actual Hours Valid?": {
+      "main": [
+        [
+          {
+            "node": "Save Actual Hours",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Actual Hours Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Actual Hours": {
+      "main": [
+        [
+          {
+            "node": "Set Session — waiting_productivity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Session — waiting_productivity": {
+      "main": [
+        [
+          {
+            "node": "Build Q3 — Productivity Keyboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Q3 — Productivity Keyboard": {
+      "main": [
+        [
+          {
+            "node": "Send Q3 — Productivity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Productivity Response": {
+      "main": [
+        [
+          {
+            "node": "Productivity Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Productivity Valid?": {
+      "main": [
+        [
+          {
+            "node": "Save Productivity + Night Timestamp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Productivity Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Productivity + Night Timestamp": {
+      "main": [
+        [
+          {
+            "node": "Clear Session After Night",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Session After Night": {
+      "main": [
+        [
+          {
+            "node": "Send Closing Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {}
+}

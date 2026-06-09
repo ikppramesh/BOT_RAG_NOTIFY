@@ -1,0 +1,172 @@
+{
+  "name": "02 — Afternoon Nudge (2 PM Daily)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 30 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "sched-2pm",
+      "name": "Schedule Trigger — 2 PM IST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Student Registry",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-registry-2pm",
+      "name": "Read Student Registry",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [220, 0],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "loop-2pm",
+      "name": "Loop Over Each Student",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "check-chat-id-2pm",
+              "leftValue": "={{ String($json['telegram_chat_id'] || '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-chatid-2pm",
+      "name": "Has Chat ID?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pick a random daily tip from the pool\nconst tips = [\n  \"One focused hour is worth three distracted hours.\",\n  \"Revision today saves panic tomorrow.\",\n  \"Write one answer today. Just one. That's 365 answers in a year.\",\n  \"Current Affairs is not about reading everything. It's about connecting everything.\",\n  \"The syllabus is finite. Your effort makes it infinite.\",\n  \"Don't compare your Day 30 with someone else's Day 300.\",\n  \"Even Laxmikanth was written one page at a time.\",\n  \"Consistency beats intensity. Show up every single day.\",\n  \"Your optional subject is your scoring weapon. Sharpen it daily.\",\n  \"50 MCQs a day = 18,250 in a year. Start now.\"\n];\n\nconst student = $input.first().json;\nconst randomTip = tips[Math.floor(Math.random() * tips.length)];\n\nreturn [{\n  json: {\n    ...student,\n    chat_id: String(student['telegram_chat_id']),\n    daily_tip: randomTip\n  }\n}];"
+      },
+      "id": "pick-random-tip",
+      "name": "Pick Random Tip",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, -80]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json['chat_id'] }}",
+        "text": "=☀️ Afternoon check, {{ $json['student_name'] }}! ☀️\n\nHalf the day is done.\n\nOn track? Keep the momentum going.\nBehind? The evening slots are your comeback.\n\n💡 _{{ $json['daily_tip'] }}_",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-afternoon-nudge",
+      "name": "Send Afternoon Nudge",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1100, -80],
+      "credentials": {
+        "telegramApi": {
+          "id": "lGqs8zRPmzYezr5z",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "no-chatid-2pm",
+      "name": "No Chat ID — Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [880, 80]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger — 2 PM IST": {
+      "main": [
+        [{ "node": "Read Student Registry", "type": "main", "index": 0 }]
+      ]
+    },
+    "Read Student Registry": {
+      "main": [
+        [{ "node": "Loop Over Each Student", "type": "main", "index": 0 }]
+      ]
+    },
+    "Loop Over Each Student": {
+      "main": [
+        [],
+        [{ "node": "Has Chat ID?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Has Chat ID?": {
+      "main": [
+        [{ "node": "Pick Random Tip", "type": "main", "index": 0 }],
+        [{ "node": "No Chat ID — Skip", "type": "main", "index": 0 }]
+      ]
+    },
+    "Pick Random Tip": {
+      "main": [
+        [{ "node": "Send Afternoon Nudge", "type": "main", "index": 0 }]
+      ]
+    },
+    "No Chat ID — Skip": {
+      "main": [
+        [{ "node": "Loop Over Each Student", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Afternoon Nudge": {
+      "main": [
+        [{ "node": "Loop Over Each Student", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": {}
+}

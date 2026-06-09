@@ -1,0 +1,201 @@
+{
+  "name": "05 — Weekly Summary (Sunday 10 AM)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 30 4 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "sched-sunday",
+      "name": "Schedule Trigger — Sunday 10 AM IST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Student Registry",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-registry-weekly",
+      "name": "Read Student Registry",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [220, 0],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "loop-weekly",
+      "name": "Loop Over Each Student",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            {
+              "id": "check-chatid-weekly",
+              "leftValue": "={{ String($json['telegram_chat_id'] || '') }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-chatid-weekly",
+      "name": "Has Chat ID?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Daily Responses",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Telegram Chat ID",
+              "lookupValue": "={{ $json['telegram_chat_id'] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "read-responses-weekly",
+      "name": "Read Student's Responses",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [880, -80],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate weekly summary for this student\n// Get student info from the registry loop\nconst registryItem = $('Loop Over Each Student').first().json;\nconst studentName = registryItem['student_name'] || 'Student';\nconst chatId = String(registryItem['telegram_chat_id']);\n\n// All rows for this student\nconst allRows = $input.all().map(r => r.json);\n\n// Filter to last 7 days in IST\nconst istOffset = 5.5 * 60 * 60 * 1000;\nconst now = new Date();\nconst todayIST = new Date(now.getTime() + istOffset);\n\n// Build last 7 day strings DD/MM/YYYY\nconst last7 = [];\nfor (let i = 6; i >= 0; i--) {\n  const d = new Date(todayIST);\n  d.setUTCDate(d.getUTCDate() - i);\n  const dd = String(d.getUTCDate()).padStart(2, '0');\n  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');\n  const yyyy = d.getUTCFullYear();\n  last7.push(`${dd}/${mm}/${yyyy}`);\n}\n\nconst weekStart = last7[0];\nconst weekEnd = last7[6];\n\n// Filter rows to last 7 days\nconst weekRows = allRows.filter(r => last7.includes(r['Date']));\n\n// Sum Hours Target (weekly target)\nconst weeklyTarget = weekRows.reduce((sum, r) => {\n  const h = parseFloat(r['Hours Target']);\n  return sum + (isNaN(h) ? 0 : h);\n}, 0);\n\n// Sum Actual Hours\nconst weeklyActual = weekRows.reduce((sum, r) => {\n  const h = parseFloat(r['Actual Hours']);\n  return sum + (isNaN(h) ? 0 : h);\n}, 0);\n\n// Count days where Completion Status is not empty\nconst daysCompleted = weekRows.filter(r => r['Completion Status'] && r['Completion Status'].trim() !== '').length;\n\n// Avg Productivity\nconst prodValues = weekRows\n  .map(r => parseFloat(r['Productivity']))\n  .filter(v => !isNaN(v));\nconst avgProd = prodValues.length > 0\n  ? (prodValues.reduce((a, b) => a + b, 0) / prodValues.length).toFixed(1)\n  : '—';\n\n// Percentage achieved\nconst pct = weeklyTarget > 0 ? (weeklyActual / weeklyTarget) * 100 : 0;\n\n// Pick closing line\nlet closing = '';\nif (pct >= 90) closing = '🏆 Outstanding week! You\\'re on fire. Keep this consistency.';\nelse if (pct >= 75) closing = '💪 Great consistency this week! Keep it up.';\nelse if (pct >= 50) closing = '⚠️ Decent effort, but there\\'s room to improve. Let\\'s push harder next week.';\nelse closing = '🙏 Tough week. That\\'s okay. Every week is a fresh start. Come back stronger.';\n\n// Format week range label\nconst parseDate = str => {\n  const [d, m, y] = str.split('/');\n  return new Date(y, m - 1, d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });\n};\nconst weekLabel = `${parseDate(weekStart)} – ${parseDate(weekEnd)}`;\n\nreturn [{\n  json: {\n    chat_id: chatId,\n    student_name: studentName,\n    week_label: weekLabel,\n    total_hours: weeklyActual.toFixed(1),\n    target_hours: weeklyTarget.toFixed(0),\n    days_completed: daysCompleted,\n    avg_productivity: avgProd,\n    closing_line: closing\n  }\n}];"
+      },
+      "id": "calculate-weekly-stats",
+      "name": "Calculate Weekly Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, -80]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=📊 *Weekly Report — {{ $json.student_name }}*\nWeek: {{ $json.week_label }}\n\n⏰ Total Hours: *{{ $json.total_hours }}h* out of {{ $json.target_hours }}h target\n✅ Days Completed: *{{ $json.days_completed }}* out of 7 days\n⭐ Avg Productivity: *{{ $json.avg_productivity }} / 5*\n\n{{ $json.closing_line }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-weekly-summary",
+      "name": "Send Weekly Summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1320, -80],
+      "credentials": {
+        "telegramApi": {
+          "id": "lGqs8zRPmzYezr5z",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "no-chatid-weekly",
+      "name": "No Chat ID — Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [880, 80]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger — Sunday 10 AM IST": {
+      "main": [
+        [{ "node": "Read Student Registry", "type": "main", "index": 0 }]
+      ]
+    },
+    "Read Student Registry": {
+      "main": [
+        [{ "node": "Loop Over Each Student", "type": "main", "index": 0 }]
+      ]
+    },
+    "Loop Over Each Student": {
+      "main": [
+        [],
+        [{ "node": "Has Chat ID?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Has Chat ID?": {
+      "main": [
+        [{ "node": "Read Student's Responses", "type": "main", "index": 0 }],
+        [{ "node": "No Chat ID — Skip", "type": "main", "index": 0 }]
+      ]
+    },
+    "Read Student's Responses": {
+      "main": [
+        [{ "node": "Calculate Weekly Stats", "type": "main", "index": 0 }]
+      ]
+    },
+    "Calculate Weekly Stats": {
+      "main": [
+        [{ "node": "Send Weekly Summary", "type": "main", "index": 0 }]
+      ]
+    },
+    "No Chat ID — Skip": {
+      "main": [
+        [{ "node": "Loop Over Each Student", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Weekly Summary": {
+      "main": [
+        [{ "node": "Loop Over Each Student", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": {}
+}

@@ -1,0 +1,30 @@
+# Credentials — never commit real tokens
+cred.env
+*.env
+.env*
+
+# macOS
+.DS_Store
+__MACOSX/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Archives
+Archive.zip
+*.zip
+
+# n8n local data
+.n8n/
+
+# Claude Code local config (contains command history with local paths)
+.claude/settings.local.json

@@ -1,0 +1,367 @@
+{
+  "name": "03 — Night Check-in (9:30 PM Daily)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 16 * * *"
+            }
+          ]
+        }
+      },
+      "id": "sched-930pm",
+      "name": "Schedule Trigger — 9:30 PM IST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Student Registry",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-registry-night",
+      "name": "Read Student Registry",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "loop-night",
+      "name": "Loop Over Each Student",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "check-chat-id-night",
+              "leftValue": "={{ String($json['telegram_chat_id'] || '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-chatid-night",
+      "name": "Has Chat ID?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate day number and today's IST date\nconst student = $input.first().json;\nconst startDateStr = student['start_date'] || student['start date'] || '';\nlet dayNumber = '?';\nif (startDateStr) {\n  const parts = startDateStr.split('/');\n  let startDate;\n  if (parts.length === 3) {\n    startDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));\n  } else {\n    startDate = new Date(startDateStr);\n  }\n  if (!isNaN(startDate.getTime())) {\n    const diffMs = new Date() - startDate;\n    dayNumber = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;\n  }\n}\n\nconst istOffset = 5.5 * 60 * 60 * 1000;\nconst now = new Date();\nconst istNow = new Date(now.getTime() + istOffset);\nconst dd = String(istNow.getUTCDate()).padStart(2, '0');\nconst mm = String(istNow.getUTCMonth() + 1).padStart(2, '0');\nconst yyyy = istNow.getUTCFullYear();\nconst todayIST = `${dd}/${mm}/${yyyy}`;\n\nreturn [{\n  json: {\n    ...student,\n    day_number: dayNumber,\n    chat_id: String(student['telegram_chat_id']),\n    today_date: todayIST\n  }\n}];"
+      },
+      "id": "prepare-night-data",
+      "name": "Prepare Night Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Daily Responses",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Telegram Chat ID",
+              "lookupValue": "={{ $json['chat_id'] }}"
+            },
+            {
+              "lookupColumn": "Date",
+              "lookupValue": "={{ $json['today_date'] }}"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "id": "lookup-morning-targets",
+      "name": "Lookup Today's Morning Targets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1100,
+        -80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the night Q1 message with reply keyboard\n// If today's morning targets not found, use '?'\nconst nightData = $('Prepare Night Data').first().json;\nlet slotsTarget = '?';\nlet hoursTarget = '?';\ntry {\n  const sheetRow = $input.first().json;\n  slotsTarget = sheetRow['Slots Target'] || '?';\n  hoursTarget = sheetRow['Hours Target'] || '?';\n} catch(e) {}\n\nreturn [{\n  json: {\n    chat_id: nightData.chat_id,\n    text: `🌙 Good Evening, ${nightData.student_name}! 🌙\\nDay *${nightData.day_number}* \\u2014 Quick report time.\\n\\nDid you hit your targets today?\\n_(You targeted: ${slotsTarget} slots, ${hoursTarget}h)_`,\n    parse_mode: 'Markdown',\n    reply_markup: {\n      keyboard: [\n        [\n          { text: '\\u2705 Done' },\n          { text: '\\u26a0\\ufe0f Partially' }\n        ],\n        [\n          { text: '\\u274c Not Done' }\n        ]\n      ],\n      one_time_keyboard: true,\n      resize_keyboard: true\n    },\n    today_date: nightData.today_date,\n    student_name: nightData.student_name,\n    telegram_chat_id: nightData.telegram_chat_id\n  }\n}];"
+      },
+      "id": "build-night-q1",
+      "name": "Build Night Q1 — Status Keyboard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.text, parse_mode: $json.parse_mode, reply_markup: $json.reply_markup}) }}",
+        "options": {}
+      },
+      "id": "send-night-q1",
+      "name": "Send Night Q1 — Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Student Registry",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "telegram_chat_id": "={{ $('Build Night Q1 — Status Keyboard').first().json.telegram_chat_id }}",
+            "Expected Next": "waiting_status",
+            "Session Date": "={{ $('Build Night Q1 — Status Keyboard').first().json.today_date }}"
+          },
+          "matchingColumns": [
+            "telegram_chat_id"
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-session-waiting-status",
+      "name": "Set Session — waiting_status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1760,
+        -80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "no-chatid-night",
+      "name": "No Chat ID — Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        880,
+        80
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger — 9:30 PM IST": {
+      "main": [
+        [
+          {
+            "node": "Read Student Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Student Registry": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Each Student",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Each Student": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Has Chat ID?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Chat ID?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Night Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Chat ID — Skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Night Data": {
+      "main": [
+        [
+          {
+            "node": "Lookup Today's Morning Targets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Today's Morning Targets": {
+      "main": [
+        [
+          {
+            "node": "Build Night Q1 — Status Keyboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Night Q1 — Status Keyboard": {
+      "main": [
+        [
+          {
+            "node": "Send Night Q1 — Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Night Q1 — Status": {
+      "main": [
+        [
+          {
+            "node": "Set Session — waiting_status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Session — waiting_status": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Each Student",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Chat ID — Skip": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Each Student",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {}
+}
