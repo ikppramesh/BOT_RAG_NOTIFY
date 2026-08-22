@@ -39,6 +39,68 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "is-ask-cmd",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "/ask",
+              "operator": { "type": "string", "operation": "startsWith" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-ask-command",
+      "name": "Is /ask Command?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        330,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Strip the /ask prefix and hand the question off to workflow 07\nconst d = $input.first().json;\nconst question = d.text.replace(/^\\/ask\\s*/i, '').trim();\nreturn [{ json: { chat_id: d.chat_id, question } }];"
+      },
+      "id": "parse-ask-question",
+      "name": "Parse Ask Question",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        550,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_07_RAG_QUERY_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "call-rag-query",
+      "name": "Call RAG Query Workflow (07)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        770,
+        200
+      ]
+    },
+    {
+      "parameters": {
         "documentId": {
           "__rl": true,
           "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
@@ -1124,7 +1186,36 @@
       "main": [
         [
           {
+            "node": "Is /ask Command?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is /ask Command?": {
+      "main": [
+        [
+          {
+            "node": "Parse Ask Question",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Lookup Student Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Ask Question": {
+      "main": [
+        [
+          {
+            "node": "Call RAG Query Workflow (07)",
             "type": "main",
             "index": 0
           }

@@ -1,0 +1,477 @@
+{
+  "name": "07 — Ingest Study Material + RSS/News (RAG)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "sched-ingest",
+      "name": "Schedule Trigger — Every 6h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 250]
+    },
+
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "method": "GET",
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "q", "value": "'REPLACE_WITH_DRIVE_FOLDER_ID' in parents and trashed = false" },
+            { "name": "fields", "value": "files(id,name,mimeType,modifiedTime)" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "list-drive-files",
+      "name": "List Files In Study Material Folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_WITH_GDRIVE_CRED_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Ingested Files Log",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-files-log",
+      "name": "Read Ingested Files Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [440, 0],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Diff Drive folder listing against the Ingested Files Log to find new files\nconst driveFiles = $('List Files In Study Material Folder').first().json.files || [];\nconst loggedRows = $input.all().map(i => i.json);\nconst loggedIds = new Set(loggedRows.map(r => String(r.file_id || '')));\n\nconst newFiles = driveFiles.filter(f => !loggedIds.has(f.id) && f.mimeType === 'application/pdf');\n\nif (newFiles.length === 0) return [];\n\nreturn newFiles.map(f => ({\n  json: {\n    file_id: f.id,\n    file_name: f.name,\n    ingested_at: new Date().toISOString()\n  }\n}));"
+      },
+      "id": "filter-new-files",
+      "name": "Filter New Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Ingested Files Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "file_id": "={{ $json.file_id }}",
+            "file_name": "={{ $json.file_name }}",
+            "ingested_at": "={{ $json.ingested_at }}"
+          },
+          "matchingColumns": ["file_id"]
+        },
+        "options": {}
+      },
+      "id": "log-new-files",
+      "name": "Log New Files As Ingested",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [880, 0],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": { "options": {} },
+      "id": "loop-new-files",
+      "name": "Loop Over New Files",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1100, 0]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "method": "GET",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.file_id + '?alt=media' }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "download-file",
+      "name": "Download File Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, -100],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_WITH_GDRIVE_CRED_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "id": "extract-pdf-text",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [1540, -100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Chunk extracted PDF text into ~500-word windows with 50-word overlap.\n// Derives subject/doc_type tags from the filename — encourage mentors to\n// name files like \"GS2_Polity_Syllabus.pdf\" so subject tagging works well.\nconst fileMeta = $('Loop Over New Files').first().json;\nconst fileName = fileMeta.file_name || 'unknown_file';\nconst text = (($input.first().json.text) || '').replace(/\\s+/g, ' ').trim();\n\nconst baseName = fileName.replace(/\\.[^.]+$/, '');\nconst parts = baseName.split(/[_-]/);\nconst subject = parts[0] || 'General';\nconst lowerName = fileName.toLowerCase();\nlet docType = 'material';\nif (lowerName.includes('syllabus')) docType = 'syllabus';\nelse if (lowerName.includes('pyq')) docType = 'pyq';\nelse if (lowerName.includes('note')) docType = 'notes';\n\nconst words = text.split(' ').filter(Boolean);\nconst chunkSize = 500;\nconst overlap = 50;\nconst chunks = [];\nfor (let i = 0; i < words.length; i += (chunkSize - overlap)) {\n  const chunkWords = words.slice(i, i + chunkSize);\n  if (chunkWords.length === 0) break;\n  chunks.push(chunkWords.join(' '));\n  if (i + chunkSize >= words.length) break;\n}\n\nconst today = new Date().toISOString().slice(0, 10);\nreturn chunks.map((chunkText, idx) => ({\n  json: {\n    text: chunkText,\n    source_doc: fileName,\n    subject,\n    doc_type: docType,\n    uploaded_at: today,\n    chunk_index: idx\n  }\n}));"
+      },
+      "id": "chunk-document",
+      "name": "Chunk & Tag Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, -100]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://api.voyageai.com/v1/embeddings",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ input: [$json.text], model: 'voyage-3-lite', input_type: 'document' }) }}",
+        "options": {}
+      },
+      "id": "embed-doc-chunk",
+      "name": "Embed Document Chunk — Voyage AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, -100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_VOYAGE_CRED_ID",
+          "name": "Voyage AI API (Header Auth)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a Qdrant point from the embedding response + the chunk metadata\n// carried on the upstream 'Chunk & Tag Document' node.\nfunction uuidv4() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {\n    const r = Math.random() * 16 | 0;\n    const v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\n\nconst meta = $('Chunk & Tag Document').first().json;\nconst embedding = $json.data[0].embedding;\n\nreturn [{\n  json: {\n    id: uuidv4(),\n    vector: embedding,\n    payload: {\n      text: meta.text,\n      source_doc: meta.source_doc,\n      subject: meta.subject,\n      doc_type: meta.doc_type,\n      uploaded_at: meta.uploaded_at,\n      chunk_index: meta.chunk_index\n    }\n  }\n}];"
+      },
+      "id": "prepare-doc-point",
+      "name": "Prepare Qdrant Point (Doc)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, -100]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "PUT",
+        "url": "https://REPLACE_WITH_QDRANT_HOST/collections/study_material/points",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ points: [$json] }) }}",
+        "options": {}
+      },
+      "id": "upsert-doc-point",
+      "name": "Upsert Point To Qdrant (Doc)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, -100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_QDRANT_CRED_ID",
+          "name": "Qdrant API (Header Auth)"
+        }
+      }
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// Edit this list to the current-affairs feeds relevant to your syllabus.\n// Each feed is tagged with a subject so retrieved chunks can be scoped\n// (e.g. filter /ask searches to just 'Current Affairs' if desired later).\nreturn [\n  { json: { feed_url: 'https://www.thehindu.com/news/national/feeder/default.rss', subject_tag: 'Current Affairs — National' } }\n  // Add more feeds here, e.g. PIB releases, PRS India blog, Down To Earth, etc.\n  // { json: { feed_url: 'https://example.org/feed.xml', subject_tag: 'Current Affairs — Environment' } }\n];"
+      },
+      "id": "rss-feed-list",
+      "name": "RSS Feed List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 500]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "RSS Ingested Log",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-rss-log",
+      "name": "Read RSS Ingested Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [440, 500],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": { "options": {} },
+      "id": "loop-feeds",
+      "name": "Loop Over Feeds",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [660, 500]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.feed_url }}",
+        "options": {}
+      },
+      "id": "read-rss-feed",
+      "name": "RSS Feed Read",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [880, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keep only items not already logged as ingested (dedup by link/guid)\nconst feedMeta = $('Loop Over Feeds').first().json;\nconst loggedRows = $('Read RSS Ingested Log').all().map(i => i.json);\nconst loggedGuids = new Set(loggedRows.map(r => String(r.guid || '')));\n\nconst items = $input.all().map(i => i.json);\nconst newItems = items.filter(it => {\n  const guid = it.guid || it.link || it.id || '';\n  return guid && !loggedGuids.has(String(guid));\n});\n\nconst today = new Date().toISOString().slice(0, 10);\nreturn newItems.map(it => {\n  const guid = String(it.guid || it.link || it.id || '');\n  const summary = (it.contentSnippet || it.content || it.summary || '').toString().trim();\n  return {\n    json: {\n      guid,\n      text: `${it.title || ''}. ${summary}`.trim(),\n      source_doc: it.title || guid,\n      subject: feedMeta.subject_tag || 'Current Affairs',\n      doc_type: 'current_affairs',\n      uploaded_at: today,\n      link: it.link || ''\n    }\n  };\n});"
+      },
+      "id": "filter-new-rss-items",
+      "name": "Filter New RSS Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 400]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://api.voyageai.com/v1/embeddings",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ input: [$json.text], model: 'voyage-3-lite', input_type: 'document' }) }}",
+        "options": {}
+      },
+      "id": "embed-rss-item",
+      "name": "Embed RSS Item — Voyage AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_VOYAGE_CRED_ID",
+          "name": "Voyage AI API (Header Auth)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function uuidv4() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {\n    const r = Math.random() * 16 | 0;\n    const v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\n\nconst meta = $('Filter New RSS Items').first().json;\nconst embedding = $json.data[0].embedding;\n\nreturn [{\n  json: {\n    id: uuidv4(),\n    vector: embedding,\n    payload: {\n      text: meta.text,\n      source_doc: meta.source_doc,\n      subject: meta.subject,\n      doc_type: meta.doc_type,\n      uploaded_at: meta.uploaded_at,\n      link: meta.link\n    },\n    guid: meta.guid\n  }\n}];"
+      },
+      "id": "prepare-rss-point",
+      "name": "Prepare Qdrant Point (RSS)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 400]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "PUT",
+        "url": "https://REPLACE_WITH_QDRANT_HOST/collections/study_material/points",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ points: [{ id: $json.id, vector: $json.vector, payload: $json.payload }] }) }}",
+        "options": {}
+      },
+      "id": "upsert-rss-point",
+      "name": "Upsert Point To Qdrant (RSS)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_QDRANT_CRED_ID",
+          "name": "Qdrant API (Header Auth)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "RSS Ingested Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "guid": "={{ $json.guid }}",
+            "ingested_at": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": ["guid"]
+        },
+        "options": {}
+      },
+      "id": "log-rss-item",
+      "name": "Log RSS Item As Ingested",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1980, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger — Every 6h": {
+      "main": [
+        [
+          { "node": "List Files In Study Material Folder", "type": "main", "index": 0 },
+          { "node": "RSS Feed List", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+
+    "List Files In Study Material Folder": {
+      "main": [[{ "node": "Read Ingested Files Log", "type": "main", "index": 0 }]]
+    },
+    "Read Ingested Files Log": {
+      "main": [[{ "node": "Filter New Files", "type": "main", "index": 0 }]]
+    },
+    "Filter New Files": {
+      "main": [[{ "node": "Log New Files As Ingested", "type": "main", "index": 0 }]]
+    },
+    "Log New Files As Ingested": {
+      "main": [[{ "node": "Loop Over New Files", "type": "main", "index": 0 }]]
+    },
+    "Loop Over New Files": {
+      "main": [
+        [],
+        [{ "node": "Download File Content", "type": "main", "index": 0 }]
+      ]
+    },
+    "Download File Content": {
+      "main": [[{ "node": "Extract PDF Text", "type": "main", "index": 0 }]]
+    },
+    "Extract PDF Text": {
+      "main": [[{ "node": "Chunk & Tag Document", "type": "main", "index": 0 }]]
+    },
+    "Chunk & Tag Document": {
+      "main": [[{ "node": "Embed Document Chunk — Voyage AI", "type": "main", "index": 0 }]]
+    },
+    "Embed Document Chunk — Voyage AI": {
+      "main": [[{ "node": "Prepare Qdrant Point (Doc)", "type": "main", "index": 0 }]]
+    },
+    "Prepare Qdrant Point (Doc)": {
+      "main": [[{ "node": "Upsert Point To Qdrant (Doc)", "type": "main", "index": 0 }]]
+    },
+    "Upsert Point To Qdrant (Doc)": {
+      "main": [[{ "node": "Loop Over New Files", "type": "main", "index": 0 }]]
+    },
+
+    "RSS Feed List": {
+      "main": [[{ "node": "Read RSS Ingested Log", "type": "main", "index": 0 }]]
+    },
+    "Read RSS Ingested Log": {
+      "main": [[{ "node": "Loop Over Feeds", "type": "main", "index": 0 }]]
+    },
+    "Loop Over Feeds": {
+      "main": [
+        [],
+        [{ "node": "RSS Feed Read", "type": "main", "index": 0 }]
+      ]
+    },
+    "RSS Feed Read": {
+      "main": [[{ "node": "Filter New RSS Items", "type": "main", "index": 0 }]]
+    },
+    "Filter New RSS Items": {
+      "main": [[{ "node": "Embed RSS Item — Voyage AI", "type": "main", "index": 0 }]]
+    },
+    "Embed RSS Item — Voyage AI": {
+      "main": [[{ "node": "Prepare Qdrant Point (RSS)", "type": "main", "index": 0 }]]
+    },
+    "Prepare Qdrant Point (RSS)": {
+      "main": [[{ "node": "Upsert Point To Qdrant (RSS)", "type": "main", "index": 0 }]]
+    },
+    "Upsert Point To Qdrant (RSS)": {
+      "main": [[{ "node": "Log RSS Item As Ingested", "type": "main", "index": 0 }]]
+    },
+    "Log RSS Item As Ingested": {
+      "main": [[{ "node": "Loop Over Feeds", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {}
+}

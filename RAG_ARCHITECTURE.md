@@ -1,5 +1,11 @@
 # RAG Add-On — "Ask Doubt" Feature
 
+> **Status:** Phases 1–4 below are built as `n8n_workflows/07_ingest_material.json`
+> and `n8n_workflows/07_rag_query.json` (plus a routing edit to
+> `04_capture_replies.json`). See `n8n_workflows/README.md` for the setup
+> steps (new credentials, new Sheet tabs, one-time Qdrant collection
+> creation) before importing and activating them.
+
 ## 1. Purpose
 
 The bot today is one-directional: it pushes check-in prompts and records
