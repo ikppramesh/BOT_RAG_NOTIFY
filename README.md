@@ -120,6 +120,7 @@ BOT_RAG_NOTIFY/
 ├── LAYMAN_SETUP_GUIDE.md            # Non-technical setup guide (no coding required)
 ├── PRD_LA_Excellence_Mentorship_Automation.md  # Full product specification
 ├── QUICKSIGHT_DASHBOARD_ARCHITECTURE.md  # Data architecture for a QuickSight mentor dashboard
+├── RAG_ARCHITECTURE.md               # RAG "/ask" add-on: vector DB, ingestion & query design
 └── README.md
 ```
 
