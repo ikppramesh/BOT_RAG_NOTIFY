@@ -69,15 +69,19 @@ Telegram Bot (@Irmentor_bot)
 
 ## Workflows
 
-Five n8n workflow files live in `n8n_workflows/`:
+Seven n8n workflow files live in `n8n_workflows/`:
 
 | File | Purpose | Schedule |
 |------|---------|----------|
 | `01_morning_checkin.json` | Sends morning study-target question to all students | 7:00 AM IST daily |
 | `02_afternoon_nudge.json` | Sends motivational message | 2:00 PM IST daily |
 | `03_night_checkin.json` | Sends 5 button-tap progress questions | 9:30 PM IST daily |
-| `04_capture_replies.json` | Listens for student messages & button taps; writes to Google Sheets | Always-on (24/7) |
+| `04_capture_replies.json` | Listens for student messages & button taps; writes to Google Sheets; routes `/ask` to workflow 07 | Always-on (24/7) |
 | `05_weekly_summary.json` | Calculates and sends personalised weekly report | Sunday 10:00 AM IST |
+| `07_ingest_material.json` | RAG: chunks/embeds mentor study material (Drive) + RSS/news feeds into Qdrant | Every 6 hours |
+| `07_rag_query.json` | RAG: answers the `/ask <question>` command from the Qdrant-indexed material via Claude | Sub-workflow (invoked by 04) |
+
+See `n8n_workflows/README.md` for the RAG add-on's setup steps and `RAG_ARCHITECTURE.md` for the design.
 
 ### Activation Order
 
@@ -111,6 +115,8 @@ BOT_RAG_NOTIFY/
 │   ├── 03_night_checkin.json        # 9:30 PM evening check-in workflow
 │   ├── 04_capture_replies.json      # Always-on reply capture workflow
 │   ├── 05_weekly_summary.json       # Weekly summary workflow
+│   ├── 07_ingest_material.json      # RAG: ingest study material (Drive) + RSS/news into Qdrant
+│   ├── 07_rag_query.json            # RAG: /ask command — retrieve + answer via Claude
 │   └── README.md                    # Workflow-specific notes
 ├── cloud_setup_assistant.py         # AI-guided setup automation (uses Claude API)
 ├── fix_webhook.py                   # Re-point Telegram webhook to current ngrok URL
@@ -119,6 +125,8 @@ BOT_RAG_NOTIFY/
 ├── SETUP_GUIDE.md                   # Technical step-by-step setup guide
 ├── LAYMAN_SETUP_GUIDE.md            # Non-technical setup guide (no coding required)
 ├── PRD_LA_Excellence_Mentorship_Automation.md  # Full product specification
+├── QUICKSIGHT_DASHBOARD_ARCHITECTURE.md  # Data architecture for a QuickSight mentor dashboard
+├── RAG_ARCHITECTURE.md               # RAG "/ask" add-on: vector DB, ingestion & query design
 └── README.md
 ```
 

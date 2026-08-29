@@ -1,0 +1,350 @@
+{
+  "name": "07 — RAG Query (/ask Command)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "exec-wf-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "has-question",
+              "leftValue": "={{ String($json.question || '').trim() }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-question-if",
+      "name": "Has Question Text?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Execute Workflow Trigger').first().json;\nreturn [{\n  json: {\n    chat_id: d.chat_id,\n    reply_text: 'Ask me a study question after /ask — e.g. /ask What topics are in the Polity syllabus?',\n    matched_log: 'N/A',\n    source_docs_log: ''\n  }\n}];"
+      },
+      "id": "build-usage-reply",
+      "name": "Build Usage Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 200]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.reply_text }}",
+        "additionalFields": {}
+      },
+      "id": "send-usage-reply",
+      "name": "Send Usage Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [660, 200],
+      "credentials": {
+        "telegramApi": {
+          "id": "lGqs8zRPmzYezr5z",
+          "name": "Telegram account"
+        }
+      }
+    },
+
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://api.voyageai.com/v1/embeddings",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ input: [$('Execute Workflow Trigger').first().json.question], model: 'voyage-3-lite', input_type: 'query' }) }}",
+        "options": {}
+      },
+      "id": "embed-question",
+      "name": "Embed Question — Voyage AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, -100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_VOYAGE_CRED_ID",
+          "name": "Voyage AI API (Header Auth)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://REPLACE_WITH_QDRANT_HOST/collections/study_material/points/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ vector: $json.data[0].embedding, limit: 5, with_payload: true, score_threshold: 0.5 }) }}",
+        "options": {}
+      },
+      "id": "search-qdrant",
+      "name": "Search Qdrant — study_material",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, -100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_QDRANT_CRED_ID",
+          "name": "Qdrant API (Header Auth)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// score_threshold is already applied server-side by Qdrant (see previous\n// node's body), so any hits returned here count as relevant. Tune the\n// threshold in 'Search Qdrant' if answers feel off-topic or too sparse.\nconst hits = ($json.result || []);\nconst matched = hits.length > 0;\n\nconst contextBlock = hits\n  .map((h, i) => `[${i + 1}] (${h.payload.source_doc}) ${h.payload.text}`)\n  .join('\\n\\n');\n\nconst sourceDocs = [...new Set(hits.map(h => h.payload.source_doc))];\n\nreturn [{\n  json: {\n    matched,\n    context_block: contextBlock,\n    source_docs: sourceDocs\n  }\n}];"
+      },
+      "id": "build-context",
+      "name": "Build Context From Matches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "is-matched",
+              "leftValue": "={{ $json.matched }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "any-match-if",
+      "name": "Any Relevant Match?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1100, -100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Execute Workflow Trigger').first().json;\nreturn [{\n  json: {\n    chat_id: d.chat_id,\n    reply_text: \"I don't have material on that yet — please ask your mentor directly.\",\n    matched_log: 'No',\n    source_docs_log: ''\n  }\n}];"
+      },
+      "id": "build-fallback-reply",
+      "name": "Build Fallback Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const question = $('Execute Workflow Trigger').first().json.question;\nconst context = $json.context_block;\n\nconst prompt = `Answer the student's question using ONLY the context below. If the context doesn't fully answer it, say so honestly rather than guessing. Do not use outside knowledge. Keep the answer concise (a few sentences, or a short list) and cite which numbered source each fact comes from.\\n\\nContext:\\n${context}\\n\\nQuestion: ${question}`;\n\nreturn [{ json: { prompt, source_docs: $json.source_docs } }];"
+      },
+      "id": "build-prompt",
+      "name": "Build Grounded Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -200]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 500, temperature: 0.2, messages: [{ role: 'user', content: $json.prompt }] }) }}",
+        "options": {}
+      },
+      "id": "claude-generate",
+      "name": "Claude — Generate Answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, -200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_ANTHROPIC_CRED_ID",
+          "name": "Anthropic API (Header Auth, x-api-key)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Execute Workflow Trigger').first().json;\nconst sourceDocs = $('Build Grounded Prompt').first().json.source_docs || [];\nconst answer = ($json.content && $json.content[0] && $json.content[0].text) || \"Sorry, I couldn't generate an answer right now.\";\n\nconst sourceLine = sourceDocs.length ? `\\n\\nSource: ${sourceDocs.join(', ')}` : '';\n\nreturn [{\n  json: {\n    chat_id: d.chat_id,\n    reply_text: answer + sourceLine,\n    matched_log: 'Yes',\n    source_docs_log: sourceDocs.join(', ')\n  }\n}];"
+      },
+      "id": "format-answer",
+      "name": "Format Answer Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, -200]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.reply_text }}",
+        "additionalFields": {}
+      },
+      "id": "send-fallback-reply",
+      "name": "Send Fallback Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1540, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "lGqs8zRPmzYezr5z",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.reply_text }}",
+        "additionalFields": {}
+      },
+      "id": "send-answer-reply",
+      "name": "Send Answer Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1980, -200],
+      "credentials": {
+        "telegramApi": {
+          "id": "lGqs8zRPmzYezr5z",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "RAG Query Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ new Date().toISOString().slice(0,10) }}",
+            "Telegram Chat ID": "={{ $json.chat_id }}",
+            "Question": "={{ $('Execute Workflow Trigger').first().json.question }}",
+            "Matched": "={{ $json.matched_log }}",
+            "Source Docs": "={{ $json.source_docs_log }}",
+            "Timestamp": "={{ new Date().toISOString() }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-rag-query",
+      "name": "Log RAG Query",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2200, -50],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IrJ6I92aZKiii26h",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Has Question Text?", "type": "main", "index": 0 }]]
+    },
+    "Has Question Text?": {
+      "main": [
+        [{ "node": "Embed Question — Voyage AI", "type": "main", "index": 0 }],
+        [{ "node": "Build Usage Reply", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Usage Reply": {
+      "main": [[{ "node": "Send Usage Reply", "type": "main", "index": 0 }]]
+    },
+
+    "Embed Question — Voyage AI": {
+      "main": [[{ "node": "Search Qdrant — study_material", "type": "main", "index": 0 }]]
+    },
+    "Search Qdrant — study_material": {
+      "main": [[{ "node": "Build Context From Matches", "type": "main", "index": 0 }]]
+    },
+    "Build Context From Matches": {
+      "main": [[{ "node": "Any Relevant Match?", "type": "main", "index": 0 }]]
+    },
+    "Any Relevant Match?": {
+      "main": [
+        [{ "node": "Build Grounded Prompt", "type": "main", "index": 0 }],
+        [{ "node": "Build Fallback Reply", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Fallback Reply": {
+      "main": [[{ "node": "Send Fallback Reply", "type": "main", "index": 0 }]]
+    },
+    "Send Fallback Reply": {
+      "main": [[{ "node": "Log RAG Query", "type": "main", "index": 0 }]]
+    },
+    "Build Grounded Prompt": {
+      "main": [[{ "node": "Claude — Generate Answer", "type": "main", "index": 0 }]]
+    },
+    "Claude — Generate Answer": {
+      "main": [[{ "node": "Format Answer Reply", "type": "main", "index": 0 }]]
+    },
+    "Format Answer Reply": {
+      "main": [[{ "node": "Send Answer Reply", "type": "main", "index": 0 }]]
+    },
+    "Send Answer Reply": {
+      "main": [[{ "node": "Log RAG Query", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {}
+}
