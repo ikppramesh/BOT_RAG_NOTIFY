@@ -63,7 +63,7 @@ to students           all messages            you can review
 
 7. BotFather sends back your **API Token**. It looks like:
    ```
-   8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY
+   YOUR_TELEGRAM_BOT_TOKEN
    ```
 
 > **Save this token immediately.** Copy it to a notes file on your computer AND your phone.
@@ -461,7 +461,7 @@ When students tap evening buttons, the following values are written to the sheet
 ## Quick Reference — Your Credentials
 
 ```
-Bot Token:         8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY
+Bot Token:         YOUR_TELEGRAM_BOT_TOKEN
 Bot Username:      @Irmentor_bot
 Bot Link:          https://t.me/Irmentor_bot
 

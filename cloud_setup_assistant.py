@@ -55,7 +55,7 @@ ACTIVATION_ORDER = [
 
 # Defaults that can be overridden by user
 DEFAULTS = {
-    "bot_token":  "8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY",
+    "bot_token":  "YOUR_TELEGRAM_BOT_TOKEN",
     "sheet_id":   "1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs",
 }
 
@@ -346,7 +346,7 @@ Current collected info:
                 "Guide the user to create one:\n"
                 "1. In n8n, go to Credentials → Add credential\n"
                 "2. Search for 'Telegram API'\n"
-                f"3. Paste the bot token: 8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY\n"
+                f"3. Paste the bot token: YOUR_TELEGRAM_BOT_TOKEN\n"
                 "4. Save it, then give me the credential ID from the URL."
             )
             print(f"\n🤖  {reply}\n")
