@@ -13,8 +13,10 @@ import json
 import subprocess
 import sys
 
-N8N_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0ZWY2MDYwOC0yN2JmLTQ0MjUtODEzNi02MWYxNWRlMGJmZDUiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzc0MzYyMTA0LCJleHAiOjE3NzY5MTY4MDB9.rics8_QWSNd82cWv_tWJbC6Kpa41nWv0ZMxIJoJGzHk"
-BOT_TOKEN = "8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY"
+from creds import cred
+
+N8N_KEY = cred("N8N_API_KEY")
+BOT_TOKEN = cred("BOT_TOKEN")
 WORKFLOW_ID = "nt2Pe4REE11JGxmz"
 N8N_BASE = "http://localhost:5678"
 

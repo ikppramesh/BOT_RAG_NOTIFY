@@ -400,7 +400,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({chat_id: $('Process Slots Response').first().json.chat_id, text: $('Process Slots Response').first().json.q2_text, parse_mode: 'Markdown', reply_markup: $('Process Slots Response').first().json.q2_reply_markup}) }}",
@@ -418,7 +418,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.error_msg, reply_markup: {remove_keyboard: true}}) }}",
@@ -565,7 +565,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({chat_id: $('Process Hours Target Response').first().json.chat_id, text: $('Process Hours Target Response').first().json.confirm_text, parse_mode: 'Markdown', reply_markup: {remove_keyboard: true}}) }}",
@@ -583,7 +583,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.error_msg, reply_markup: {remove_keyboard: true}}) }}",
@@ -730,7 +730,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({chat_id: $('Process Status Response').first().json.chat_id, text: $('Process Status Response').first().json.ask_hours_text, reply_markup: {remove_keyboard: true}}) }}",
@@ -748,7 +748,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.error_msg, reply_markup: {remove_keyboard: true}}) }}",
@@ -908,7 +908,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.text, reply_markup: $json.reply_markup}) }}",
@@ -926,7 +926,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.error_msg, reply_markup: {remove_keyboard: true}}) }}",
@@ -1074,7 +1074,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({chat_id: $('Process Productivity Response').first().json.chat_id, text: $('Process Productivity Response').first().json.closing_text, parse_mode: 'Markdown', reply_markup: {remove_keyboard: true}}) }}",
@@ -1092,7 +1092,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/sendMessage",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({chat_id: $json.chat_id, text: $json.error_msg, reply_markup: {remove_keyboard: true}}) }}",

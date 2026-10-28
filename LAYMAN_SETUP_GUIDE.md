@@ -68,7 +68,7 @@ In **Student Registry**, check that your students' rows have:
 
 > **How to get a student's Telegram Chat ID:**
 > Ask them to message the bot. Go to:
-> `https://api.telegram.org/bot8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY/getUpdates`
+> `https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/getUpdates`
 > Find `"chat": {"id": 123456789}` — that number is their Chat ID.
 
 ---
@@ -107,7 +107,7 @@ In **Student Registry**, check that your students' rows have:
 4. Click **"Telegram API"**
 5. In the **"Access Token"** field, paste your bot token:
    ```
-   8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY
+   YOUR_TELEGRAM_BOT_TOKEN
    ```
 6. Click **"Save"**
 7. You'll see the credential listed. Click on it.
@@ -272,7 +272,7 @@ After connecting credentials, click **"Save"** (top right of the workflow editor
 | Thing | Value |
 |-------|-------|
 | Bot Name | @Irmentor_bot |
-| Bot Token | `8711874086:AAG3vXsuGQuHc8VXbL-hiJI7YVGpg71j_AY` |
+| Bot Token | `YOUR_TELEGRAM_BOT_TOKEN` |
 | Google Sheet ID | `1w7hg-5sUBVQUr8fx12D0Tkeu1W8yey9JIAGv9vCOsWs` |
 | Morning time | 7:00 AM IST |
 | Afternoon time | 2:00 PM IST |
